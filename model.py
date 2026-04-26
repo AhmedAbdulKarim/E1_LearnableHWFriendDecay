@@ -7,7 +7,44 @@ from timm.models.vision_transformer import _cfg
 from functools import partial
 from timm.models import create_model
 
+import torch
+import torch.nn as nn
+from spikingjelly.clock_driven.neuron import MultiStepLIFNode
+
 __all__ = ['QKFormer']
+
+
+class HardwareShiftLIFNode(MultiStepLIFNode):
+    def __init__(self, init_k=2.0, v_threshold=1.0, v_reset=0.0, 
+                 surrogate_function=None, detach_reset=True, step_mode='m', backend='torch'):
+        
+        # Initialize the base class with a dummy tau. We will override it.
+        super().__init__(tau=2.0, v_threshold=v_threshold, v_reset=v_reset, 
+                         surrogate_function=surrogate_function, detach_reset=detach_reset, 
+                         step_mode=step_mode, backend=backend)
+        
+        # Learnable right-shift parameter (k)
+        # k=1 -> shift by 1 (decay 1/2), k=2 -> shift by 2 (decay 1/4), etc.
+        self.k = nn.Parameter(torch.tensor([float(init_k)]))
+
+    def neuronal_charge(self, x: torch.Tensor):
+        # 1. Clamp k to hardware-realistic shift limits (e.g., 1 bit to 8 bits)
+        k_clamped = torch.clamp(self.k, min=1.0, max=8.0)
+        
+        # 2. The Straight-Through Estimator (STE) Trick
+        # Forward pass gets exact integer. Backward pass routes gradient to k_clamped.
+        k_quant = k_clamped + (torch.round(k_clamped) - k_clamped).detach()
+        
+        # 3. Calculate mathematical decay factor for PyTorch software
+        # Hardware: V_new = V - (V >> k)
+        # Software Equivalent: V_new = V * (1 - 2^-k)
+        decay_factor = 1.0 - (2.0 ** -k_quant)
+        
+        # 4. Integrate charge using the hardware-constrained decay
+        if self.v_reset is None or self.v_reset == 0.:
+            self.v = self.v * decay_factor + x
+        else:
+            self.v = (self.v - self.v_reset) * decay_factor + self.v_reset + x
 
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
@@ -449,4 +486,6 @@ if __name__ == '__main__':
 # 6. Th train.py file has been updated
 # 7. The new command for training the model with Adam's optimizer and a learning rate of 0.001 will be added to the notebook on Kaggle.
 # 8. **kwargs was added to the model constructor vit_snn
+
+#E1: added: HardwareShiftLIFNode
 
