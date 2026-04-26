@@ -13,11 +13,16 @@ from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 
 __all__ = ['QKFormer']
 
+
 class HardwareShiftLIFNode(MultiStepLIFNode):
     def __init__(self, init_k=2.0, v_threshold=1.0, v_reset=0.0, 
                  surrogate_function=None, detach_reset=True, backend='torch'):
         
-        # Initialize the base class. Removed 'step_mode' to match your SpikingJelly version.
+        # FIX: If no surrogate is provided, load the default SpikingJelly Sigmoid
+        if surrogate_function is None:
+            from spikingjelly.clock_driven import surrogate
+            surrogate_function = surrogate.Sigmoid()
+            
         super().__init__(tau=2.0, v_threshold=v_threshold, v_reset=v_reset, 
                          surrogate_function=surrogate_function, detach_reset=detach_reset, 
                          backend=backend)
@@ -43,7 +48,6 @@ class HardwareShiftLIFNode(MultiStepLIFNode):
             self.v = self.v * decay_factor + x
         else:
             self.v = (self.v - self.v_reset) * decay_factor + self.v_reset + x
-
 
 
 class MLP(nn.Module):
