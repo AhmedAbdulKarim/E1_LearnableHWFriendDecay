@@ -13,18 +13,16 @@ from spikingjelly.clock_driven.neuron import MultiStepLIFNode
 
 __all__ = ['QKFormer']
 
-
 class HardwareShiftLIFNode(MultiStepLIFNode):
     def __init__(self, init_k=2.0, v_threshold=1.0, v_reset=0.0, 
-                 surrogate_function=None, detach_reset=True, step_mode='m', backend='torch'):
+                 surrogate_function=None, detach_reset=True, backend='torch'):
         
-        # Initialize the base class with a dummy tau. We will override it.
+        # Initialize the base class. Removed 'step_mode' to match your SpikingJelly version.
         super().__init__(tau=2.0, v_threshold=v_threshold, v_reset=v_reset, 
                          surrogate_function=surrogate_function, detach_reset=detach_reset, 
-                         step_mode=step_mode, backend=backend)
+                         backend=backend)
         
         # Learnable right-shift parameter (k)
-        # k=1 -> shift by 1 (decay 1/2), k=2 -> shift by 2 (decay 1/4), etc.
         self.k = nn.Parameter(torch.tensor([float(init_k)]))
 
     def neuronal_charge(self, x: torch.Tensor):
@@ -45,6 +43,8 @@ class HardwareShiftLIFNode(MultiStepLIFNode):
             self.v = self.v * decay_factor + x
         else:
             self.v = (self.v - self.v_reset) * decay_factor + self.v_reset + x
+
+
 
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
